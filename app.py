@@ -2,6 +2,7 @@ import os
 import psycopg2
 from datetime import datetime
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from modules.players import Players
 from modules.teams import Teams
 
@@ -11,6 +12,12 @@ url = os.environ.get("DB_URL")
 
 time = datetime.now()
 started = time.strftime("%d/%m/%Y %H:%M:%S")
+
+CORS(app, resources={
+    r"/*": {
+        "origins": "same-origin, https://nba.pongstr.io"
+    }
+})
 
 
 def db():

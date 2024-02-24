@@ -64,7 +64,7 @@ def get_players_query(args: Dict[str, int], offset: int):
         JOIN player ON common_player_info.person_id = player.id
     """
 
-    print(args["active"], args['active'] > 1)
+    print(args['active'])
 
     active_query = """
     WHERE is_active = %s

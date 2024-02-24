@@ -109,8 +109,7 @@ class Teams():
                 "message": message,
                 "status_code": 400
             }
-            return jsonify(response) 
-
+            return jsonify(response)
 
         games_list = self.db_query(query_team_games(team_name, str(season)))
         games = games_list.fetchall()
