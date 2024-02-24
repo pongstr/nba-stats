@@ -6,6 +6,7 @@ from modules.players import Players
 from modules.teams import Teams
 
 app = Flask(__name__)
+app.url_map.strict_slashes = False
 url = os.environ.get("DB_URL")
 
 time = datetime.now()
