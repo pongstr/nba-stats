@@ -116,8 +116,8 @@ class Players():
     - returns pagination info
 
     @param active: indicates whether to return inactive players
-    @param page:      indicates the current page of the list
-    @param show:     indicates how many records should be returned
+    @param page:   indicates the current page of the list
+    @param show:   indicates how many records should be returned
     """
 
     def get_players(self, args: Dict[str, str] = None):
@@ -138,10 +138,15 @@ class Players():
 
         total_pages = math.floor((int(count[0]["count"])) / args["show"])
 
-        if (args["page"] > total_pages):
+        if args['active'] > 1:
+            return jsonify({
+                "count": len(players),
+                "results": list(map(set_player_url, players))
+            })
+
+        if args["page"] > total_pages:
             message = "You might have reached the end of the list."
             message += "Please check the URL and try again."
-
             response = jsonify({
                 "error": "404 Page not found",
                 "message": message
@@ -149,21 +154,20 @@ class Players():
             response.status_code = 404
             return response
 
+        info = {
+            "count": len(players),
+            "current_page": args["page"],
+            "first": build_url("first", args, total_pages),
+            "last": build_url("last", args, total_pages),
+            "next_page": build_url("next", args, total_pages),
+            "prev_page": build_url("prev", args, total_pages),
+            "total_pages": total_pages
+        }
+
         return jsonify({
             "results": list(map(set_player_url, players)),
-            "info": {
-                "count": len(players),
-                "current_page": args["page"],
-                "first": build_url("first", args, total_pages),
-                "last": build_url("last", args, total_pages),
-                "next_page": build_url("next", args, total_pages),
-                "prev_page": build_url("prev", args, total_pages),
-                "total_pages": total_pages
-            }
+            "info": info
         })
-
-    """
-    """
 
     def get_player(self, player_slug: str):
         players_list = self.db_query(get_player_query(player_slug))
