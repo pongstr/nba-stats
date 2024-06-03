@@ -1,7 +1,8 @@
 import math
-from psycopg2 import extras
 from typing import Dict, Optional
+
 from flask import jsonify
+from psycopg2 import extras
 
 get_players_args = {
     "active": 1,
@@ -33,12 +34,12 @@ def validate_get_players_args(input: Optional[Dict[str, str]]):
 def build_url(dir: str, args: Dict[str, int], total_pages: int):
     pathname = "/players?active=%s&page=%s&show=%s"
 
-    if (dir == "last"):
+    if dir == "last":
         if total_pages == args["page"]:
             return None
         return pathname % (args["active"], total_pages, args["show"])
 
-    if (dir == "first"):
+    if dir == "first":
         if args["page"] == 1:
             return None
         return pathname % (args["active"], 1, args["show"])
@@ -64,41 +65,72 @@ def get_players_query(args: Dict[str, int], offset: int):
         JOIN player ON common_player_info.person_id = player.id
     """
 
-    print(args['active'])
+    print(args["active"])
 
     active_query = """
     WHERE is_active = %s
-    """ % (args["active"])
+    """ % (
+        args["active"]
+    )
 
     offset_limit_query = """
     LIMIT %s
     OFFSET %s
-    """ % (args["show"], offset)
+    """ % (
+        args["show"],
+        offset,
+    )
 
     if args["active"] > 1:
-        return ' '.join([base_query, offset_limit_query])
+        return " ".join([base_query, offset_limit_query])
 
-    return ' '.join([base_query, active_query, offset_limit_query])
+    return " ".join([base_query, active_query, offset_limit_query])
 
 
 def get_players_count(active: int):
-    return ("""
+    return (
+        (
+            """
         SELECT COUNT(person_id) FROM common_player_info
             JOIN player ON common_player_info.person_id = player.id
             WHERE is_active = %s;
-    """) % (active)
+    """
+        )
+        % (active)
+    )
 
 
 def get_player_query(player_slug: str):
-    return ("""
+    return (
+        (
+            """
     SELECT * FROM common_player_info
         JOIN player ON common_player_info.person_id = player.id
         WHERE player_slug = '%s'
         LIMIT 1;
-    """) % (player_slug)
+    """
+        )
+        % (player_slug)
+    )
 
 
-class Players():
+def find_player_query(word: str):
+    return (
+        (
+            """
+        SELECT *
+        FROM common_player_info
+        WHERE first_name ILIKE '%%%s%%'
+           OR last_name ILIKE '%%%s%%'
+           OR display_first_last ILIKE '%%%s%%'
+           ORDER BY from_year DESC;
+        """
+        )
+        % (word, word, word)
+    )
+
+
+class Players:
     def __init__(self, db):
         self.db = db
 
@@ -138,19 +170,15 @@ class Players():
 
         total_pages = math.floor((int(count[0]["count"])) / args["show"])
 
-        if args['active'] > 1:
-            return jsonify({
-                "count": len(players),
-                "results": list(map(set_player_url, players))
-            })
+        if args["active"] > 1:
+            return jsonify(
+                {"count": len(players), "results": list(map(set_player_url, players))}
+            )
 
         if args["page"] > total_pages:
-            message = "You might have reached the end of the list."
+            message = "You might have reached the end of the list. "
             message += "Please check the URL and try again."
-            response = jsonify({
-                "error": "404 Page not found",
-                "message": message
-            })
+            response = jsonify({"error": "404 Page not found", "message": message})
             response.status_code = 404
             return response
 
@@ -161,13 +189,14 @@ class Players():
             "last": build_url("last", args, total_pages),
             "next_page": build_url("next", args, total_pages),
             "prev_page": build_url("prev", args, total_pages),
-            "total_pages": total_pages
+            "total_pages": total_pages,
         }
 
-        return jsonify({
-            "results": list(map(set_player_url, players)),
-            "info": info
-        })
+        return jsonify({"results": list(map(set_player_url, players)), "info": info})
+
+    """
+    get player
+    """
 
     def get_player(self, player_slug: str):
         players_list = self.db_query(get_player_query(player_slug))
@@ -177,14 +206,29 @@ class Players():
         self.db.close()
 
         if len(player) < 1:
-            message = "The player you are looking for does not exist."
+            message = "The player you are looking for does not exist. "
             message += "Please check the URL and try again."
 
-            response = jsonify({
-                "error": "404 Not found",
-                "message": message
-            })
+            response = jsonify({"error": "404 Not found", "message": message})
             response.status_code = 404
             return response
 
         return jsonify(player[0])
+
+    """
+    find player
+    """
+
+    def find_player(self, search_keyword: str):
+        players_list = self.db_query(find_player_query(search_keyword))
+        players = players_list.fetchall()
+
+        players_list.close()
+        self.db.close()
+
+        return jsonify(
+            {
+                "count": len(players),
+                "results": list(map(set_player_url, players)),
+            }
+        )
