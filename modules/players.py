@@ -1,16 +1,19 @@
 import math
-from typing import Dict, Optional
+from typing import Dict
+from urllib.parse import urlencode
 
 from flask import jsonify
-from players_query import (find_player, get_player, get_players,
-                           get_players_count)
 from psycopg2 import extras
 
-get_players_args = {
-    "active": 1,
-    "page": 1,
-    "show": 20,
-}
+from modules.players_query import (
+    GetPlayerArgs,
+    find_player,
+    get_player,
+    get_players,
+    get_players_args,
+    get_players_count,
+)
+
 
 def set_player_url(player: Dict[str, str]):
     player["url"] = "/players/" + player["player_slug"]
@@ -26,48 +29,59 @@ class Players:
         db.execute(query)
         return db
 
-    def validate_get_players_args(input: Optional[Dict[str, str]]):
+    def validate_get_players_args(self, input) -> GetPlayerArgs:
         allowed = ["active", "page", "show"]
-        output = get_players_args
+        output = input.copy()
 
-        if input is None:
-            return output
+        if len(input) == 0:
+            return get_players_args
 
         for key, value in input.items():
             if key not in allowed:
-                return output
+                return {**get_players_args, **output}
 
             if not value.isdigit():
-                return output
+                return {**get_players_args, **output}
 
             if value.isdigit():
-                output[key] = int(value)
+                output.update({key: int(value)})
 
-        return output
+        return {**get_players_args, **output}
 
+    def build_url(self, dir: str, args: GetPlayerArgs, total_pages: int):
 
-    def build_url(dir: str, args: Dict[str, int], total_pages: int):
-        pathname = "/players?active=%s&page=%s&show=%s"
+        npath = args.copy()
+
+        print(urlencode(npath))
+        active = int(args["active"])
+        count = int(args["count"])
 
         if dir == "last":
             if total_pages == args["page"]:
                 return None
-            return pathname % (args["active"], total_pages, args["show"])
+            pages = total_pages
+            npath.update({"active": active, "count": count, "page": pages})
+            return "".join(["/players?", urlencode(npath)])
 
         if dir == "first":
             if args["page"] == 1:
                 return None
-            return pathname % (args["active"], 1, args["show"])
+            npath.update({"active": active, "count": count, "page": 1})
+            return "".join(["/players?", urlencode(npath)])
 
-        if dir == "prev" and args["page"] <= 1:
+        if dir == "prev" and int(args["page"]) <= 1:
             return None
 
-        if dir == "next" and args["page"] >= total_pages:
+        if dir == "next" and int(args["page"]) >= total_pages:
             return None
 
-        page = args["page"] + 1 if dir == "next" else args["page"] - 1
-        return pathname % (args["active"], page, args["show"])
+        current = int(args["page"])
+        page = int(args["page"]) + 1 if dir == "next" else current - 1
+        active = int(args["active"])
+        count = int(args["count"])
+        npath.update({"active": active, "count": count, "page": page})
 
+        return "".join(["/players?", urlencode(npath)])
 
     """
     get players
@@ -79,33 +93,28 @@ class Players:
     @param show:   indicates how many records should be returned
     """
 
-    def get_players(self, args: Dict[str, str] = None):
-        args = self.validate_get_players_args(args)
-
-        offset = (args["page"] - 1) * args["show"]
-
-        players_list = self.db_query(get_players(args, offset))
+    def get_players(self, params):
+        args = self.validate_get_players_args(params)
+        players_list = self.db_query(get_players(**args))
         players = players_list.fetchall()
 
-        active = args["active"]
-        players_count = self.db_query(get_players_count(active))
-        count = players_count.fetchall()
+        players_count = self.db_query(get_players_count(args["active"]))
+        total_players = players_count.fetchall()[0]
 
-        players_list.close()
-        players_count.close()
+        total_pages = math.floor(total_players["count"] / int(args["count"]))
 
-        total_pages = math.floor((int(count[0]["count"])) / args["show"])
-
-        if args["active"] > 1:
+        if int(args["active"]) > 1:
             results = list(map(set_player_url, players))
             return jsonify({"count": len(players), "results": results})
 
-        if args["page"] > total_pages:
+        if int(args["page"]) > total_pages:
             msg = "You might have reached the end of the list. "
             msg += "Please check the URL and try again."
             res = jsonify({"error": "404 Page not found", "message": msg})
             res.status_code = 404
             return res
+
+        print(args)
 
         info = {
             "count": len(players),
@@ -116,6 +125,10 @@ class Players:
             "prev_page": self.build_url("prev", args, total_pages),
             "total_pages": total_pages,
         }
+        #
+
+        players_list.close()
+        players_count.close()
 
         results = list(map(set_player_url, players))
         return jsonify({"results": results, "info": info})
@@ -128,8 +141,6 @@ class Players:
         players_list = self.db_query(get_player(player_slug))
         player = players_list.fetchall()
 
-        players_list.close()
-
         if len(player) < 1:
             message = "The player you are looking for does not exist. "
             message += "Please check the URL and try again."
@@ -138,6 +149,7 @@ class Players:
             response.status_code = 404
             return response
 
+        players_list.close()
         return jsonify(player[0])
 
     """
