@@ -1,5 +1,5 @@
 import math
-from typing import Dict
+from typing import Dict, Union
 from urllib.parse import urlencode
 
 from flask import jsonify
@@ -48,13 +48,22 @@ class Players:
 
         return {**get_players_args, **output}
 
-    def build_url(self, dir: str, args: GetPlayerArgs, total_pages: int):
+    def build_url(
+        self,
+        dir: str,
+        args: GetPlayerArgs,
+        params: Dict[str, Union[str, int]],
+        total_pages: int,
+    ):
+        keys = list(params.keys())
+        npath: Dict[str, Union[str, int, object]] = {**args}
 
-        npath = args.copy()
-
-        print(urlencode(npath))
         active = int(args["active"])
         count = int(args["count"])
+
+        if len(keys) == 0:
+            del npath["orderby"]
+            del npath["field"]
 
         if dir == "last":
             if total_pages == args["page"]:
@@ -66,6 +75,7 @@ class Players:
         if dir == "first":
             if args["page"] == 1:
                 return None
+
             npath.update({"active": active, "count": count, "page": 1})
             return "".join(["/players?", urlencode(npath)])
 
@@ -119,10 +129,10 @@ class Players:
         info = {
             "count": len(players),
             "current_page": args["page"],
-            "first": self.build_url("first", args, total_pages),
-            "last": self.build_url("last", args, total_pages),
-            "next_page": self.build_url("next", args, total_pages),
-            "prev_page": self.build_url("prev", args, total_pages),
+            "first": self.build_url("first", args, params, total_pages),
+            "last": self.build_url("last", args, params, total_pages),
+            "next_page": self.build_url("next", args, params, total_pages),
+            "prev_page": self.build_url("prev", args, params, total_pages),
             "total_pages": total_pages,
         }
         #
