@@ -2,12 +2,12 @@ import math
 from typing import Dict, Union
 from urllib.parse import urlencode
 
-from flask import jsonify
+from flask import Request, jsonify, request
 from psycopg2 import extras
 
 from modules.players_query import (
     GetPlayerArgs,
-    find_player,
+    find_player_record,
     get_player,
     get_players,
     get_players_args,
@@ -86,12 +86,16 @@ class Players:
             return None
 
         current = int(args["page"])
-        page = int(args["page"]) + 1 if dir == "next" else current - 1
         active = int(args["active"])
         count = int(args["count"])
+        page = int(args["page"]) + 1 if dir == "next" else current - 1
+
         npath.update({"active": active, "count": count, "page": page})
 
         return "".join(["/players?", urlencode(npath)])
+
+    def error_handler(self, code: int, msg: str):
+        return jsonify({"status": str(code), "message": msg}, code)
 
     """
     get players
@@ -115,16 +119,12 @@ class Players:
 
         if int(args["active"]) > 1:
             results = list(map(set_player_url, players))
-            return jsonify({"count": len(players), "results": results})
+            return jsonify({"count": len(players), "results": results}, 200)
 
         if int(args["page"]) > total_pages:
             msg = "You might have reached the end of the list. "
             msg += "Please check the URL and try again."
-            res = jsonify({"error": "404 Page not found", "message": msg})
-            res.status_code = 404
-            return res
-
-        print(args)
+            return self.error_handler(404, msg)
 
         info = {
             "count": len(players),
@@ -135,13 +135,12 @@ class Players:
             "prev_page": self.build_url("prev", args, params, total_pages),
             "total_pages": total_pages,
         }
-        #
 
         players_list.close()
         players_count.close()
 
         results = list(map(set_player_url, players))
-        return jsonify({"results": results, "info": info})
+        return jsonify({"results": results, "info": info}, 200)
 
     """
     get player
@@ -160,21 +159,47 @@ class Players:
             return response
 
         players_list.close()
-        return jsonify(player[0])
+        return jsonify(player[0], 200)
 
     """
     find player
     """
 
-    def find_player(self, search_keyword: str):
-        players_list = self.db_query(find_player(search_keyword))
-        players = players_list.fetchall()
+    def find_player(self, req: Request):
+        if req.is_json:
+            data = request.get_json() if "keyword" in req.get_json() else None
 
-        players_list.close()
+            if data is not None:
+                items = self.db_query(find_player_record(data["keyword"]))
+                players = items.fetchall()
 
-        return jsonify(
-            {
-                "count": len(players),
-                "results": list(map(set_player_url, players)),
-            }
-        )
+                return jsonify(
+                    {
+                        "count": len(players),
+                        "results": list(map(set_player_url, players)),
+                    },
+                    200,
+                )
+            else:
+                return self.error_handler(400, "Bad request, `keyword` field.")
+
+        if request.content_type == "application/x-www-form-urlencoded":
+            form = req.form.to_dict()
+            data = form if "keyword" in form else None
+
+            if data is not None:
+                items = self.db_query(find_player_record(data["keyword"]))
+                players = items.fetchall()
+
+                return jsonify(
+                    {
+                        "count": len(players),
+                        "results": list(map(set_player_url, players)),
+                    },
+                    200,
+                )
+            else:
+                return self.error_handler(400, "Bad request, `keyword` field ")
+
+        message = "Bad request, Content Type is not supported."
+        return self.error_handler(400, message)

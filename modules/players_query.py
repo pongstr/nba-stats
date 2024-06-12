@@ -5,8 +5,8 @@ class GetPlayerArgs(TypedDict):
     active: int
     page: int
     count: int
-    orderby: Literal["ASC", "DESC"]
     field: str
+    orderby: Literal["ASC", "DESC"]
 
 
 get_players_args: GetPlayerArgs = {
@@ -21,7 +21,7 @@ get_players_args: GetPlayerArgs = {
 def get_players(**kwargs):
     orderby = kwargs.get("orderby", "DESC")
     return f"""
-        SELECT * FROM common_player_info
+    SELECT * FROM common_player_info
         JOIN player ON common_player_info.person_id = player.id
         WHERE is_active = {kwargs.get('active', 1)}
         ORDER BY {kwargs.get('field', 'draft_year')} {orderby}
@@ -47,7 +47,7 @@ def get_player(player_slug: str):
     """
 
 
-def find_player(keyword: str, orderby="DESC"):
+def find_player_record(keyword: str, orderby="DESC"):
     return f"""
     SELECT * FROM common_player_info
         WHERE first_name ILIKE '%{keyword}%'
