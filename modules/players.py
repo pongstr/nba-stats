@@ -16,7 +16,9 @@ from modules.players_query import (
 
 
 def set_player_url(player: Dict[str, str]):
-    player["url"] = "/players/" + player["player_slug"]
+    p = request.environ["HTTP_X_FORWARDED_SCHEME"]
+    h = request.environ["HTTP_HOST"]
+    player["url"] = f"{p}://{h}/players/{player["player_slug"]}"
     return player
 
 
@@ -29,24 +31,28 @@ class Players:
         db.execute(query)
         return db
 
-    def validate_get_players_args(self, input) -> GetPlayerArgs:
-        allowed = ["active", "page", "show"]
-        output = input.copy()
+    def validate_get_players_args(self, p) -> Union[GetPlayerArgs, Exception]:
+        allowed = ["active", "page", "count"]
+        output = p.copy()
 
-        if len(input) == 0:
+        if len(p) == 0:
             return get_players_args
+        try:
+            for key, value in p.items():
+                if key not in allowed:
+                    return {**get_players_args, **output}
 
-        for key, value in input.items():
-            if key not in allowed:
-                return {**get_players_args, **output}
+                if not value.isdigit():
+                    if key == "active":
+                        msg = "active field expects to have 0 or 1 value"
+                        raise ValueError(msg)
 
-            if not value.isdigit():
-                return {**get_players_args, **output}
+                if value.isdigit():
+                    output.update({key: int(value)})
 
-            if value.isdigit():
-                output.update({key: int(value)})
-
-        return {**get_players_args, **output}
+            return {**get_players_args, **output}
+        except Exception as err:
+            return err
 
     def build_url(
         self,
@@ -62,8 +68,8 @@ class Players:
         count = int(args["count"])
 
         if len(keys) == 0:
-            del npath["orderby"]
-            del npath["field"]
+            del npath["sort_order"]
+            del npath["sort_field"]
 
         if dir == "last":
             if total_pages == args["page"]:
@@ -95,7 +101,7 @@ class Players:
         return "".join(["/players?", urlencode(npath)])
 
     def error_handler(self, code: int, msg: str):
-        return jsonify({"status": str(code), "message": msg}, code)
+        return jsonify({"status": str(code), "message": msg}), code
 
     """
     get players
@@ -109,6 +115,10 @@ class Players:
 
     def get_players(self, params):
         args = self.validate_get_players_args(params)
+
+        if isinstance(args, Exception):
+            return self.error_handler(400, str(args))
+
         players_list = self.db_query(get_players(**args))
         players = players_list.fetchall()
 
@@ -119,7 +129,7 @@ class Players:
 
         if int(args["active"]) > 1:
             results = list(map(set_player_url, players))
-            return jsonify({"count": len(players), "results": results}, 200)
+            return jsonify({"count": len(players), "results": results}), 200
 
         if int(args["page"]) > total_pages:
             msg = "You might have reached the end of the list. "
@@ -140,7 +150,7 @@ class Players:
         players_count.close()
 
         results = list(map(set_player_url, players))
-        return jsonify({"results": results, "info": info}, 200)
+        return jsonify({"results": results, "info": info}), 200
 
     """
     get player
@@ -155,11 +165,10 @@ class Players:
             message += "Please check the URL and try again."
 
             response = jsonify({"error": "404 Not found", "message": message})
-            response.status_code = 404
-            return response
+            return response, 404
 
         players_list.close()
-        return jsonify(player[0], 200)
+        return jsonify(player[0]), 200
 
     """
     find player
@@ -173,11 +182,13 @@ class Players:
                 items = self.db_query(find_player_record(data["keyword"]))
                 players = items.fetchall()
 
-                return jsonify(
-                    {
-                        "count": len(players),
-                        "results": list(map(set_player_url, players)),
-                    },
+                return (
+                    jsonify(
+                        {
+                            "count": len(players),
+                            "results": list(map(set_player_url, players)),
+                        },
+                    ),
                     200,
                 )
             else:
