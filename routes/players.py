@@ -1,14 +1,10 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, request
 
 from modules.db import database
 from modules.players import Players
 
 app = Blueprint("players", __name__, url_prefix="/players")
 players_db = Players(database)
-
-
-def error_handler(code: int, msg: str):
-    return jsonify({"status": str(code), "message": msg}, code)
 
 
 @app.get("/")
