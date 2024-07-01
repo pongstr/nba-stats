@@ -5,8 +5,7 @@ nba stats api
 $ python -m venv .venv
 $ source .venv/bin/activate
 
-$ pip install pipenv
-$ pipenv install 
+$ pip install -r requirements.txt 
 
 
 # Production
